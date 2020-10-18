@@ -45,7 +45,7 @@ To assess the performance of $M$ forecasters I suggest to compare each pair of f
 $$
 \theta_{ij} = \frac{\text{mean WIS model i}}{\text{mean WIS model j}}
 $$
-where the means are computed for the overlap of available forecasts (one could just as well look at the sums). In the below plot, numbers below one indicate that the row model is better, numbers above one indicate that the column model is better. It can be seen that the results of the pairwise comparisons are \textit{almost} transitive, i.e. if $i$ beats $j$ and $j$ beats $k$ then $i$ usually also beats $k$ (there is one exception to this).
+where the means are computed for the overlap of available forecasts (one could just as well look at the sums). In the below plot, numbers below one indicate that the row model is better, numbers above one indicate that the column model is better. \textbf{The analysis is restricted to state-level forecasts 1 through 4 wk ahead.} It can be seen that the results of the pairwise comparisons are \textit{almost} transitive, i.e. if $i$ beats $j$ and $j$ beats $k$ then $i$ usually also beats $k$ (there is one exception to this).
 
 To assess the strength of evidence for diffent forecast performance of models $i$ and $j$ I perform a permutation test implemented in the \texttt{R} package \texttt{surveillance}. The statstic used in this test is the mean WIS. Description from the documentation:
 
