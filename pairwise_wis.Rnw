@@ -31,8 +31,9 @@ scores <- read.csv("20201013-inc-scores.csv", # stringsAsFactors = FALSE,
 # bring all timezeros to Monday:
 scores$timezero <- next_monday(scores$timezero)
 
-# restrict to 1-4 wk ahead (this had been missing previously!)
-scores <- subset(scores, target %in% paste(1:4, "wk ahead inc death"))
+# restrict to 1-4 wk ahead state-level (this had been missing previously!)
+scores <- subset(scores, target %in% paste(1:4, "wk ahead inc death") &
+                   unit != "US")
 
 scores <- scores[, c("model", "timezero", "unit", "target", "abs_error", "wis")]
 
