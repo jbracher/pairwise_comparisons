@@ -1,0 +1,295 @@
+\documentclass{article}
+\usepackage[left=2.3cm,right=2.3cm, top = 2.2cm, bottom = 3cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+\section*{Evaluation of incident death forecasts based on pairwise model comparisons}
+\textbf{Johannes Bracher (johannes.bracher@kit.edu)}
+
+\medskip
+
+<<cache=TRUE>>=
+# some preparation...
+
+Sys.setlocale(category = "LC_TIME", locale = "en_US.UTF8")
+
+# helper function
+next_monday <- function(date){
+  nm <- rep(NA, length(date))
+  for(i in seq_along(date)){
+    nm[i] <- date[i] + (0:6)[weekdays(date[i] + (0:6)) == "Monday"]
+  }
+  return(as.Date(nm, origin = "1970-01-01"))
+}
+
+# load scores:
+scores <- read.csv("20201013-inc-scores.csv", # stringsAsFactors = FALSE,
+                   colClasses = list(timezero = "Date"), stringsAsFactors = FALSE)
+
+# bring all timezeros to Monday:
+scores$timezero <- next_monday(scores$timezero)
+
+# restrict to 1-4 wk ahead (this had been missing previously!)
+scores <- subset(scores, target %in% paste(1:4, "wk ahead inc death"))
+
+scores <- scores[, c("model", "timezero", "unit", "target", "abs_error", "wis")]
+
+# the included models:
+models <- unique(scores$model)
+@
+
+To assess the performance of $M$ forecasters I suggest to compare each pair of forecasters based on the available overlap of forecast dates, locations and horizons. For each pair $(i, j)$ I report the ratio
+$$
+\theta_{ij} = \frac{\text{mean WIS model i}}{\text{mean WIS model j}}
+$$
+where the means are computed for the overlap of available forecasts (one could just as well look at the sums). In the below plot, numbers below one indicate that the row model is better, numbers above one indicate that the column model is better. It can be seen that the results of the pairwise comparisons are \textit{almost} transitive, i.e. if $i$ beats $j$ and $j$ beats $k$ then $i$ usually also beats $k$ (there is one exception to this).
+
+To assess the strength of evidence for diffent forecast performance of models $i$ and $j$ I perform a permutation test implemented in the \texttt{R} package \texttt{surveillance}. The statstic used in this test is the mean WIS. Description from the documentation:
+
+\begin{quote}
+For each permutation, we first randomly assign the membership of the $n$ individual scores to either model $A$ or $B$ with probability 0.5. We then compute the respective difference in mean for model $A$ and $B$ in this permuted set of scores. The Monte Carlo p-value is then given by (1 + number of permuted differences larger than observed difference (in absolute value)) / (1 + nPermutation).
+\end{quote}
+
+This plot shows that the forecasters can roughly be divided into five groups:
+\begin{itemize}
+\item The ensemble
+\item \texttt{YYG-ParamSearch} and \texttt{UMass-MechBayes} as the strongest member models
+\item \texttt{GT−DeepCOVID} and \texttt{IHME-CurveFit} which are somewhat weaker but clearly beat the baseline
+\item the baseline model and three models with comparable performance
+\item three models with weaker performance than the baseline model
+\end{itemize}
+
+<<cache=TRUE>>=
+library(surveillance) # contains permutation test
+
+# function for pairwise comparison of models
+pairwise_comarison <- function(scores, mx, my, subset = rep(TRUE, nrow(scores)),
+                               permutation_test = FALSE){
+  # apply subset:
+  scores <- scores[subset, ]
+
+  # subsets of available scores for both models:
+  subx <- subset(scores, model == mx)
+  suby <- subset(scores, model == my)
+
+  # merge together and restrict to overlap:
+  sub <- merge(subx, suby, by = c("timezero", "unit", "target"),
+               all.x = FALSE, all.y = FALSE)
+
+  # compute ratio:
+  ratio <- sum(sub$wis.x) / sum(sub$wis.y)
+  # perform permutation test:
+  if(permutation_test){
+    pval <- permutationTest(sub$wis.x, sub$wis.y,
+                            nPermutation = 999)$pVal.permut
+  }else{
+    pval <- NULL
+  }
+
+  return(list(ratio = ratio, pval = pval, mx = mx, my = my))
+}
+
+# matrices to store:
+results_ratio <- results_pval <- matrix(ncol = length(models),
+                                        nrow = length(models),
+                                        dimnames = list(models, models))
+
+set.seed(123) # set seed for permutation tests
+
+for(mx in models){
+  for(my in models[models != mx]){
+    pwc <- pairwise_comarison(scores = scores, mx = mx, my = my,
+                              permutation_test = TRUE)
+    results_ratio[mx, my] <- pwc$ratio
+    results_pval[mx, my] <- pwc$pval
+  }
+}
+
+# re-order accoring to performance:
+ord <- order(rowSums(results_ratio > 1, na.rm = TRUE))
+results_ratio_ord <- results_ratio[ord, ord]
+@
+
+<<cache=TRUE>>=
+library(pheatmap)
+library(RColorBrewer)
+
+cols <- brewer.pal(n = 6, name = "RdBu")
+breaks <- c(0, 0.5, 0.75, 1, 1.33, 2, 10)
+
+# direct comparisons:
+pheatmap(results_ratio_ord, display_numbers = TRUE, cluster_rows = FALSE,
+         cluster_cols = FALSE, color = cols, breaks = breaks, legend = FALSE,
+         main = "Direct pairwise comparison")
+@
+
+<<cache=TRUE>>=
+cols2 <- brewer.pal(n = 6, name = "PiYG")
+breaks2 <- c(0, 0.01, 0.05, 0.1, 1)
+pheatmap(results_pval[ord, ord], display_numbers = TRUE, cluster_rows = FALSE,
+         cluster_cols = FALSE, color = cols2, breaks = breaks2, legend = FALSE,
+         main = "Permutation tests")
+@
+
+Now the comparisons between models can potentially be based on quite different subsets of locations and targets. We therefore add another analysis based on indirect comparisons where we consider
+$$
+\theta^*_{ij} = \left(\prod_{k \neq \{i, j\}} \theta_{ik}\theta_{kj}\right)^{1/(M + 2)}
+$$
+To compare $i$ and $j$ we here compare both of them to all other models and oppose the results they achieved in these comprisons. This is loosely inspired by network meta-analysis methods. Note that in a setting where all forecasts were available for all forecasters, $\theta_i = \theta^*_i = \theta_{ik}\theta_{kj}$ would hold as the denominator of $\theta_{ik}$ and numerator of $\theta_{kj}$ would cancel out. However, if the sets of forecasts used to compute $\theta_{ik}$ and $\theta_{kj}$ differ (which is often the case), this is not ensured. The agreement of $\theta_i$ and $\theta^*_i$ thus gives us an idea of how internally coherent the results of our pairwise comparisons are. It can be seen that the results are quite similar (but not identical) to those obtained in a direct comparison.
+
+<<cache=TRUE>>=
+# compute geometric means of indirect comparisons:
+results_ratio_geommean <- NA*results_ratio
+for(mx in models){
+  for(my in models[models != mx]){
+    ratios_temp <- results_ratio[mx, ]*results_ratio[, my]
+    results_ratio_geommean[mx, my] <- exp(mean(log(ratios_temp), na.rm = TRUE))
+  }
+}
+
+# re-order
+results_ratio_geommean_ord <- results_ratio_geommean[ord, ord]
+
+
+# indirect comparisons:
+pheatmap(results_ratio_geommean_ord, display_numbers = TRUE, cluster_rows = FALSE,
+         cluster_cols = FALSE, color = cols, breaks = breaks, legend = FALSE,
+         main = "Average of indirect pairwise comparison (geometric)")
+@
+
+
+To break down everything into a single number I suggest to compute the geometric mean of ratios achieved in all direct and/or indirect comparisons (this all boils down to the same)
+
+$$
+\theta_{i} = \left(\prod_{j \neq i} \theta_{ij}\right)^{1/(M - 1)} = \left(\prod_{j \neq i} \theta^*_{ij}\right)^{1/(M - 1)}.
+$$
+
+Little surprisingly the ensemble again performs best. Note that the baseline model has a value close to 1 here, meaning that the values of the other models can also be interpreted as the reltive improvement compared to the baseline (but this will of course not generally be the case).
+
+<<results="asis", cache=TRUE>>=
+geom_mean_ratios <- exp(rowMeans(log(results_ratio), na.rm = TRUE))
+geom_mean_ratios_ord <- sort(geom_mean_ratios)
+library(xtable)
+xtable(cbind(geom_mean_ratios_ord))
+@
+
+This single number per model can also be shown over time by computing it for subsets of forecasts made on or for a specific date. Here we can say that the ensemble, \texttt{UMass-MechBayes} and \texttt{YYG-ParamSearch} are rather consistently the best models.
+
+<<cache=TRUE, fig.width=9, fig.height=6>>=
+# compare by timezero:
+timezeros <- sort(unique(scores$timezero))
+results_ratio_timezero <- array(dim = c(length(models), length(models), length(timezeros)),
+                                dimnames = list(models, models, as.character(timezeros)))
+results_ratio_geommean_timezero <- matrix(nrow = length(timezeros), ncol = length(models),
+                                          dimnames = list(as.character(timezeros), models))
+
+for(tz in seq_along(timezeros)){
+  for(mx in models){
+    for(my in models[models != mx]){
+      pwc <- pairwise_comarison(scores = scores, mx = mx, my = my,
+                                subset = scores$timezero == timezeros[tz])
+      results_ratio_timezero[mx, my, tz] <- pwc$ratio
+    }
+  }
+  results_ratio_geommean_timezero[tz, ] <-
+    exp(rowMeans(log(results_ratio_timezero[,,tz]), na.rm = TRUE))
+}
+
+results_ratio_geommean_timezero[is.nan(results_ratio_geommean_timezero)] <- NA
+cols <- rep("lightgrey", length(models))
+cols[models == "COVIDhub-ensemble"] <- "black"
+cols[models == "YYG-ParamSearch"] <- "darkred"
+cols[models == "UMass-MechBayes"] <- "darkblue"
+matplot(log(results_ratio_geommean_timezero), pch = NA, type = "l", lty = 1,
+        axes = FALSE, xlab = "timezero", col = cols, ylab = expression(theta[i]),
+        main = "Average results of pairwise comparisons")
+axis(1, at = 1:length(timezeros), labels = timezeros)
+axis(2, at = log(c(0.3, 0.5, 0.75, 1, 1.5, 2, 5)),
+     labels = c(0.3, 0.5, 0.75, 1, 1.5, 2, 5))
+box()
+legend("topleft", col = c("black", "darkred", "darkblue", "lightgrey"),
+       legend = c("COVIDhub-ensemble", "YYG-ParamSearch",
+                  "UMass-MechBayes", "others"),
+       lty = 1)
+@
+
+
+<<cache=TRUE, fig.width=9, fig.height=6>>=
+# compare by target_end_date:
+scores$target_end_date <- scores$timezero + 7*as.numeric(substr(scores$target, 1, 1)) - 2
+target_end_dates <- sort(unique(scores$target_end_date))
+results_ratio_target_end_date <-
+  array(dim = c(length(models), length(models), length(target_end_dates)),
+        dimnames = list(models, models, as.character(target_end_dates)))
+results_ratio_geommean_target_end_date <-
+  matrix(nrow = length(target_end_dates), ncol = length(models),
+         dimnames = list(as.character(target_end_dates), models))
+
+for(ted in seq_along(target_end_dates)){
+  for(mx in models){
+    for(my in models[models != mx]){
+      pwc <- pairwise_comarison(scores = scores, mx = mx, my = my,
+                                subset = scores$target_end_date == target_end_dates[ted])
+      results_ratio_target_end_date[mx, my, ted] <- pwc$ratio
+    }
+  }
+  results_ratio_geommean_target_end_date[ted, ] <-
+    exp(rowMeans(log(results_ratio_target_end_date[,,ted]), na.rm = TRUE))
+}
+
+results_ratio_geommean_target_end_date[is.nan(results_ratio_geommean_target_end_date)] <- NA
+cols <- rep("lightgrey", length(models))
+cols[models == "COVIDhub-ensemble"] <- "black"
+cols[models == "YYG-ParamSearch"] <- "darkred"
+cols[models == "UMass-MechBayes"] <- "darkblue"
+matplot(log(results_ratio_geommean_target_end_date), pch = NA, type = "l",
+        lty = 1, axes = FALSE, xlab = "target_end_date",
+        col = cols, ylab = expression(theta[i]), main = "Average results of pairwise comparisons")
+axis(1, at = 1:length(target_end_dates), labels = target_end_dates)
+axis(2, at = log(c(0.3, 0.5, 0.75, 1, 1.5, 2, 5)), labels = c(0.3, 0.5, 0.75, 1, 1.5, 2, 5))
+box()
+legend("topleft", col = c("black", "darkred", "darkblue", "lightgrey"),
+       legend = c("COVIDhub-ensemble", "YYG-ParamSearch", "UMass-MechBayes", "others"),
+       lty = 1)
+@
+
+
+<<cache=TRUE, fig.width=9, fig.height=6>>=
+# compare by target_end_date:
+targets <- sort(unique(scores$target))
+results_ratio_target <- array(dim = c(length(models), length(models), length(targets)),
+                              dimnames = list(models, models, as.character(targets)))
+results_ratio_geommean_target <- matrix(nrow = length(targets), ncol = length(models),
+                                        dimnames = list(as.character(targets), models))
+
+for(ted in seq_along(targets)){
+  for(mx in models){
+    for(my in models[models != mx]){
+      pwc <- pairwise_comarison(scores = scores, mx = mx, my = my,
+                                subset = scores$target == targets[ted])
+      results_ratio_target[mx, my, ted] <- pwc$ratio
+    }
+  }
+  results_ratio_geommean_target[ted, ] <-
+    exp(rowMeans(log(results_ratio_target[,,ted]), na.rm = TRUE))
+}
+
+results_ratio_geommean_target[is.nan(results_ratio_geommean_target)] <- NA
+cols <- rep("lightgrey", length(models))
+cols[models == "COVIDhub-ensemble"] <- "black"
+cols[models == "YYG-ParamSearch"] <- "darkred"
+cols[models == "UMass-MechBayes"] <- "darkblue"
+matplot(log(results_ratio_geommean_target), pch = NA, type = "l",
+        lty = 1, axes = FALSE, xlab = "target",
+        col = cols, ylab = expression(theta[i]), main = "Average results of pairwise comparisons")
+axis(1, at = 1:length(targets), labels = targets)
+axis(2, at = log(c(0.3, 0.5, 0.75, 1, 1.5, 2, 5)), labels = c(0.3, 0.5, 0.75, 1, 1.5, 2, 5))
+box()
+legend("topleft", col = c("black", "darkred", "darkblue", "lightgrey"),
+       legend = c("COVIDhub-ensemble", "YYG-ParamSearch", "UMass-MechBayes", "others"),
+       lty = 1)
+@
+
+\end{document}
