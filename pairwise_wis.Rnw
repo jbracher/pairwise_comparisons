@@ -33,7 +33,7 @@ To assess more formally whether the forecast performance between two models $i$ 
 \item For each block independently and with probability 1/2 either flip all pairs of scores between $i$ and $j$ or none.
 \item Compute the relative WIS skill $\theta_{ij}^{\text{perm}}$ from the permuted scores.
 \end{enumerate}
-We then generate a large number of samples from the reference distribution and compute a $p$-value as the fraction of samples $\theta_{ij}^{\text{perm}}$ exceeding the observed $\theta_{ij}$
+We then generate a large number of samples from the reference distribution. To compute a \textbf{two-sided} $p$-value we compute the fraction of samples where $\max(\theta_{ij}^{\text{perm}}, \theta_{ji}^{\text{perm}})$ exceeds the observed $\max(\theta_{ij}, \theta_{ji})$. (Previously I had described a one-sided test here, but the implementation was always two-sided).
 
 
 
@@ -249,7 +249,7 @@ In Table \ref{tab:scores} we break down this set of pairwise comparisons into th
 \center
 \begin{tabular}{l l l l}
 Model & $\theta_{i}$ & $\theta_{iB}$ & $\theta^*_{iB}$\\
-<<tab_skill, results="asis", echo=FALSE, cache=TRUE>>=
+<<tab_skill, echo=FALSE, results="asis", cache=TRUE>>=
 ind_baseline <- which(rownames(results_ratio) == "COVIDhub-baseline")
 geom_mean_ratios <- exp(rowMeans(log(results_ratio[, -ind_baseline]), na.rm = TRUE))
 ratios_baseline <- results_ratio[, "COVIDhub-baseline"]
