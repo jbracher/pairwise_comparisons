@@ -109,13 +109,13 @@ This is a measure of performance relative to the baseline model with a correctio
 To get a better intuition of what $\theta^{*}_{i}$ actually measures consider the case where there are only two forecasters. Assume that the baseline forecaster is available for all targets and denote the subset of forecast targets covered by forecaster $i$ by $\mathcal{A}_{i}$. Then we have
 
 \begin{align}
-\theta^*_1 = & \left(\frac{\theta_{1, 1} \theta_{1, 2}}{\theta_{B, 1} \theta_{B, 2}}\right)^{-1/2}\\
+\theta^*_1 = & \left(\frac{\theta_{1, 1} \theta_{1, 2}}{\theta_{B, 1} \theta_{B, 2}}\right)^{1/2}\\
 = & \dots \\
 = & \bigg(
 \frac{\text{mean WIS of model 1 on } \mathcal{A}_1}{\text{mean WIS of baseline } B  \text{ on } \mathcal{A}_1} \\
  & \ \ \times
 \frac{\text{mean WIS of model 1 on } \mathcal{A}_{1, 2} \times \frac{\text{mean WIS of model 2 on } \mathcal{A}_{2}}{\text{mean WIS of model 2 on } \mathcal{A}_{1, 2}}}{\text{mean WIS of baseline } B  \text{ on } \mathcal{A}_2}
-\bigg)^{-1/2}
+\bigg)^{1/2}
 \end{align}
 
 One can thus interpret $\theta^*_1$ as the geometric mean of two quantities:
@@ -126,7 +126,7 @@ One can thus interpret $\theta^*_1$ as the geometric mean of two quantities:
 
 This also generalizes to a larger number of models $M$ included in the comparison. The summary score $\theta^*_i$ can be interpreted as
 \begin{equation}
-\theta^*_i = \prod_{m = 1}^M \frac{\text{estimated mean WIS model } i \text{ on } \mathcal{A}_{m}}{\text{mean WIS of baseline model } B \text{ on } \mathcal{A}_{m}}.
+\theta^*_i = \left(\prod_{m = 1}^M \frac{\text{estimated mean WIS model } i \text{ on } \mathcal{A}_{m}}{\text{mean WIS of baseline model } B \text{ on } \mathcal{A}_{m}}\right)^{1/M}.
 \label{eq:intuition}
 \end{equation}
 To estimate the mean WIS of model $i$ on $\mathcal{A}_{m}$, we use the results of model $m$ as a reference to determine the relative difficulty of the forecast targets in $\mathcal{A}_{i, m}$ and $\mathcal{A}_m$. If model $i$ covered all $\mathcal{A}_m$ anyway, no correction is performed and the results obtained by model $m$ have no impact on the summary score $\theta^*_i$ of model $i$. However, equation \ref{eq:intuition} implies that we give larger weight to forecast targets covered by more models, as these enter in term \eqref{eq:intuition} more often. This means that models covering only part of the targets are allowed to ``shift the focus'' of the evaluation towards the targets they chose to cover. In a sense, each model is given an equal weight in determining on which set of targets all models are evaluated.
